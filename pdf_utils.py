@@ -1,16 +1,32 @@
+# =====================================================
+# PDF UTILS - PROFISSIONAL (RENDER + WINDOWS)
+# =====================================================
+
 import subprocess
 import time
 import os
 from pathlib import Path
+import platform
 
 # =====================================================
-# CONFIGURAÇÃO DO LIBREOFFICE
+# DETECTAR LIBREOFFICE
 # =====================================================
-LIBREOFFICE_PATH = r"C:\Program Files\LibreOffice\program\soffice.exe"
+def get_libreoffice():
+    sistema = platform.system()
+
+    if sistema == "Windows":
+        caminho = r"C:\Program Files\LibreOffice\program\soffice.exe"
+        if Path(caminho).exists():
+            return caminho
+        else:
+            raise RuntimeError("LibreOffice não encontrado no Windows.")
+
+    # Linux / Render
+    return "soffice"
 
 
 # =====================================================
-# GERADOR DE PDF (COMPATÍVEL COM app.py)
+# GERAR PDF
 # =====================================================
 def gerar_pdf(
     caminho_docx: str,
@@ -18,21 +34,17 @@ def gerar_pdf(
     cliente: str | None = None,
     tipo: str | None = None
 ) -> str:
-    """
-    Converte DOCX em PDF usando LibreOffice.
-    O PDF é salvo na MESMA pasta do DOCX.
-    Parâmetros extras existem apenas para compatibilidade.
-    """
 
     caminho_docx = Path(caminho_docx)
-
-    if not Path(LIBREOFFICE_PATH).exists():
-        raise RuntimeError("LibreOffice não encontrado no caminho configurado.")
 
     if not caminho_docx.exists():
         raise RuntimeError(f"DOCX não encontrado: {caminho_docx}")
 
-    pasta_saida = caminho_docx.parent
+    libreoffice = get_libreoffice()
+
+    pasta_saida = Path(pasta_destino) if pasta_destino else caminho_docx.parent
+    pasta_saida.mkdir(parents=True, exist_ok=True)
+
     pdf_esperado = pasta_saida / f"{caminho_docx.stem}.pdf"
 
     tentativas = 3
@@ -41,7 +53,7 @@ def gerar_pdf(
     for tentativa in range(1, tentativas + 1):
         try:
             comando = [
-                LIBREOFFICE_PATH,
+                libreoffice,
                 "--headless",
                 "--nologo",
                 "--nofirststartwizard",
@@ -54,7 +66,7 @@ def gerar_pdf(
                 comando,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                timeout=90
+                timeout=120
             )
 
             if resultado.returncode != 0:
@@ -65,7 +77,7 @@ def gerar_pdf(
             time.sleep(2)
 
             if not pdf_esperado.exists():
-                raise RuntimeError("PDF não foi gerado pelo LibreOffice.")
+                raise RuntimeError("PDF não foi gerado.")
 
             return str(pdf_esperado)
 

@@ -1,199 +1,99 @@
-import sqlite3
-from contextlib import contextmanager
+# =====================================================
+# DATABASE - SUPABASE (PROFISSIONAL)
+# =====================================================
+
+from supabase import create_client
 from datetime import datetime
-
-DB_NAME = "historico.db"
-
-# =====================================================
-# CONEXÃO
-# =====================================================
-@contextmanager
-def get_conn():
-    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
-
+import os
 
 # =====================================================
-# UTIL
+# CONFIG
 # =====================================================
-def coluna_existe(cursor, tabela, coluna):
-    cursor.execute(f"PRAGMA table_info({tabela})")
-    return coluna in [c[1] for c in cursor.fetchall()]
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise Exception("Variáveis SUPABASE não configuradas")
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # =====================================================
-# INIT + MIGRAÇÕES SEGURAS
+# INIT
 # =====================================================
 def init_db():
-    with get_conn() as conn:
-        cursor = conn.cursor()
-
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS documentos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tipo TEXT NOT NULL,
-            origem TEXT NOT NULL,
-            cliente TEXT NOT NULL,
-            caminho TEXT NOT NULL,
-            status TEXT DEFAULT 'REVISAO',
-            setor TEXT,
-            criado_em TEXT NOT NULL
-        )
-        """)
+    # Supabase já gerencia isso
+    pass
 
 
 # =====================================================
-# INSERT PRINCIPAL
+# SALVAR DOCUMENTO
 # =====================================================
 def salvar_documento(
+    usuario_id,
     tipo,
     cliente,
-    caminho,
-    origem,
+    caminho=None,
     status="REVISAO",
     setor=None
 ):
-    with get_conn() as conn:
-        conn.execute(
-            """
-            INSERT INTO documentos
-            (tipo, origem, cliente, caminho, status, setor, criado_em)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                tipo,
-                origem,
-                cliente,
-                caminho,
-                status,
-                setor,
-                datetime.now().isoformat()
-            )
-        )
+    try:
+        res = supabase.table("documentos").insert({
+            "usuario_id": usuario_id,
+            "tipo": tipo,
+            "cliente": cliente,
+            "caminho": caminho,
+            "status": status,
+            "setor": setor,
+            "criado_em": datetime.utcnow().isoformat()
+        }).execute()
+
+        return {"ok": True, "data": res.data}
+
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 # =====================================================
-# COMPATIBILIDADE COM APP (salvar_historico)
+# HISTÓRICO (COMPATÍVEL COM APP)
 # =====================================================
 def salvar_historico(dados: dict):
-    """
-    Mantém compatibilidade com app.py antigo
-    """
-    salvar_documento(
+    return salvar_documento(
+        usuario_id=dados.get("usuario"),
         tipo="CONTRATO",
         cliente=dados.get("cliente"),
         caminho=dados.get("arquivo"),
-        origem=dados.get("usuario"),
         status=dados.get("status", "REVISAO"),
         setor=dados.get("setor")
     )
 
 
 # =====================================================
-# LISTAGENS / HISTÓRICO
+# LISTAR DOCUMENTOS
 # =====================================================
-def listar_documentos(
-    tipo=None,
-    cliente=None,
-    status=None,
-    setor=None,
-    usuario=None
-):
-    query = """
-        SELECT
-            id,
-            tipo,
-            origem AS usuario,
-            cliente,
-            caminho AS arquivo,
-            status,
-            setor,
-            criado_em
-        FROM documentos
-        WHERE 1=1
-    """
-    params = []
+def listar_documentos(usuario_id=None):
+    try:
+        query = supabase.table("documentos").select("*")
 
-    if tipo:
-        query += " AND tipo = ?"
-        params.append(tipo)
+        if usuario_id:
+            query = query.eq("usuario_id", usuario_id)
 
-    if cliente:
-        query += " AND cliente LIKE ?"
-        params.append(f"%{cliente}%")
+        res = query.order("criado_em", desc=True).execute()
 
-    if status:
-        query += " AND status = ?"
-        params.append(status)
+        return res.data if res.data else []
 
-    if setor:
-        query += " AND setor = ?"
-        params.append(setor)
-
-    if usuario:
-        query += " AND origem = ?"
-        params.append(usuario)
-
-    query += " ORDER BY datetime(criado_em) DESC"
-
-    with get_conn() as conn:
-        rows = conn.execute(query, params).fetchall()
-        return [dict(row) for row in rows]
+    except Exception:
+        return []
 
 
-def buscar_por_id(doc_id):
-    with get_conn() as conn:
-        row = conn.execute(
-            "SELECT * FROM documentos WHERE id = ?",
-            (doc_id,)
-        ).fetchone()
-        return dict(row) if row else None
-
-
-def atualizar_status(doc_id, novo_status):
-    with get_conn() as conn:
-        conn.execute(
-            """
-            UPDATE documentos
-            SET status = ?
-            WHERE id = ?
-            """,
-            (novo_status, doc_id)
-        )
+def listar_historico(usuario=None):
+    return listar_documentos(usuario)
 
 
 # =====================================================
 # DASHBOARD
 # =====================================================
-def listar_dashboard(cliente=None, setor=None, usuario=None):
-    query = """
-        SELECT status, COUNT(*) AS total
-        FROM documentos
-        WHERE 1=1
-    """
-    params = []
-
-    if cliente:
-        query += " AND cliente LIKE ?"
-        params.append(f"%{cliente}%")
-
-    if setor:
-        query += " AND setor = ?"
-        params.append(setor)
-
-    if usuario:
-        query += " AND origem = ?"
-        params.append(usuario)
-
-    query += " GROUP BY status"
-
-    with get_conn() as conn:
-        rows = conn.execute(query, params).fetchall()
+def listar_dashboard(usuario_id=None):
+    dados = listar_documentos(usuario_id)
 
     dashboard = {
         "REVISAO": 0,
@@ -202,16 +102,11 @@ def listar_dashboard(cliente=None, setor=None, usuario=None):
         "TOTAL": 0
     }
 
-    for r in rows:
-        dashboard["TOTAL"] += r["total"]
-        if r["status"] in dashboard:
-            dashboard[r["status"]] = r["total"]
+    for d in dados:
+        dashboard["TOTAL"] += 1
+        status = d.get("status")
+
+        if status in dashboard:
+            dashboard[status] += 1
 
     return dashboard
-
-
-# =====================================================
-# COMPATIBILIDADE TOTAL
-# =====================================================
-def listar_historico(*args, **kwargs):
-    return listar_documentos(*args, **kwargs)
