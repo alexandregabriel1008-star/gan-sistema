@@ -48,16 +48,13 @@ BASE_USERS = os.path.join(BASE_DIR, "users.json")
 TEMPLATES_CONTRATOS = os.path.join(BASE_DIR, "templates", "CONTRATOS")
 TEMPLATES_PROPOSTAS = os.path.join(BASE_DIR, "templates", "PROPOSTAS")
 
-# cria pastas automaticamente
 for p in [BASE_OUTPUT, BASE_CONTRATADAS, TEMPLATES_CONTRATOS, TEMPLATES_PROPOSTAS]:
     os.makedirs(p, exist_ok=True)
 
-# cria arquivo de usuários se não existir
 if not os.path.exists(BASE_USERS):
     with open(BASE_USERS, "w", encoding="utf-8") as f:
         json.dump({}, f)
 
-# inicializa banco
 init_db()
 
 # =====================================================
@@ -101,9 +98,10 @@ if not st.session_state.usuario:
 
     tab1, tab2 = st.tabs(["Entrar", "Primeiro Acesso"])
 
+    # ===== LOGIN =====
     with tab1:
-        u = st.text_input("Usuário")
-        s = st.text_input("Senha", type="password")
+        u = st.text_input("Usuário", key="login_usuario")
+        s = st.text_input("Senha", type="password", key="login_senha")
 
         if st.button("Entrar"):
             if u in usuarios and usuarios[u] == hash_senha(s):
@@ -114,10 +112,11 @@ if not st.session_state.usuario:
             else:
                 st.error("Usuário ou senha inválidos")
 
+    # ===== CADASTRO =====
     with tab2:
-        nu = st.text_input("Novo Usuário")
-        ns = st.text_input("Senha", type="password")
-        cs = st.text_input("Confirmar Senha", type="password")
+        nu = st.text_input("Novo Usuário", key="cad_usuario")
+        ns = st.text_input("Senha", type="password", key="cad_senha")
+        cs = st.text_input("Confirmar Senha", type="password", key="cad_confirma")
 
         if st.button("Criar Acesso"):
             if nu in usuarios:
@@ -188,7 +187,7 @@ elif menu == "📄 Gerar Contrato":
         st.stop()
 
     template = st.selectbox("Template", templates)
-    nome_cliente = st.text_input("Nome do Cliente")
+    nome_cliente = st.text_input("Nome do Cliente", key="cliente_nome")
 
     if st.button("Gerar"):
         if not nome_cliente:
@@ -206,7 +205,7 @@ elif menu == "📄 Gerar Contrato":
 elif menu == "🏢 Cadastro de Contratadas":
     st.subheader("Cadastro")
 
-    nome = st.text_input("Nome")
+    nome = st.text_input("Nome", key="cad_empresa")
 
     if st.button("Salvar"):
         if nome:
@@ -235,7 +234,7 @@ elif menu == "📚 Histórico":
 elif menu == "⚙️ Configurações":
     st.subheader("Templates")
 
-    arq = st.file_uploader("Arquivo DOCX")
+    arq = st.file_uploader("Arquivo DOCX", key="upload_template")
 
     if arq:
         with open(os.path.join(TEMPLATES_CONTRATOS, arq.name), "wb") as f:
